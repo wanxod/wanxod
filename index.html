@@ -1,1 +1,391 @@
-{\rtf1}
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Modern Tetris</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #0f172a;
+            color: white;
+            font-family: 'Pretendard', sans-serif;
+            overflow: hidden;
+            touch-action: none;
+        }
+        #game-canvas {
+            border: 4px solid #334155;
+            background-color: #1e293b;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+            max-height: 70vh;
+            width: auto;
+        }
+        .controls button {
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+    </style>
+</head>
+<body class="flex flex-col items-center justify-center min-h-screen p-4">
+
+    <!-- Game Header -->
+    <div class="mb-4 text-center">
+        <h1 class="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-blue-400 to-purple-500">
+            TETRIS
+        </h1>
+    </div>
+
+    <!-- Game Main Area -->
+    <div class="flex flex-col md:flex-row gap-6 items-start">
+        <!-- Sidebar: Stats (Desktop) -->
+        <div class="hidden md:flex flex-col gap-4 w-32">
+            <div class="bg-slate-800 p-3 rounded-lg border border-slate-700 text-center">
+                <div class="text-xs text-slate-400 uppercase">Score</div>
+                <div id="score" class="text-xl font-mono">0</div>
+            </div>
+            <div class="bg-slate-800 p-3 rounded-lg border border-slate-700 text-center">
+                <div class="text-xs text-slate-400 uppercase">Level</div>
+                <div id="level" class="text-xl font-mono">1</div>
+            </div>
+            <div class="bg-slate-800 p-3 rounded-lg border border-slate-700 text-center">
+                <div class="text-xs text-slate-400 uppercase">Lines</div>
+                <div id="lines" class="text-xl font-mono">0</div>
+            </div>
+        </div>
+
+        <!-- Canvas -->
+        <div class="relative">
+            <canvas id="game-canvas"></canvas>
+            
+            <!-- Overlay (Start/Game Over) -->
+            <div id="overlay" class="absolute inset-0 flex items-center justify-center bg-black/70 rounded flex-col">
+                <h2 id="overlay-text" class="text-2xl font-bold mb-4">READY?</h2>
+                <button id="start-btn" class="px-6 py-2 bg-blue-600 hover:bg-blue-500 rounded-full font-bold transition-all transform active:scale-95">
+                    START GAME
+                </button>
+            </div>
+        </div>
+
+        <!-- Mobile Stats -->
+        <div class="flex md:hidden gap-4 w-full justify-center">
+            <div class="text-center">
+                <div class="text-xs text-slate-400">SCORE</div>
+                <div id="score-mobile" class="text-lg font-mono">0</div>
+            </div>
+            <div class="text-center">
+                <div class="text-xs text-slate-400">LEVEL</div>
+                <div id="level-mobile" class="text-lg font-mono">1</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Controls (Mobile Friendly) -->
+    <div class="mt-8 grid grid-cols-3 gap-2 w-full max-w-xs controls">
+        <div class="flex items-center justify-center">
+            <button id="btn-left" class="w-14 h-14 bg-slate-700 rounded-full flex items-center justify-center active:bg-slate-600">
+                <svg width="24" height="24" fill="white" viewBox="0 0 24 24"><path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z"/></svg>
+            </button>
+        </div>
+        <div class="flex flex-col gap-2 items-center">
+            <button id="btn-rotate" class="w-14 h-14 bg-blue-700 rounded-full flex items-center justify-center active:bg-blue-600">
+                <svg width="24" height="24" fill="white" viewBox="0 0 24 24"><path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm-1.01 13.2L9.53 15.74c-.45.83-.7 1.79-.7 2.8 0 3.31 2.69 6 6 6v-3l4 4-4 4v-3c-4.42 0-8-3.58-8-8 0-1.57.46-3.03 1.25-4.26z"/></svg>
+            </button>
+            <button id="btn-down" class="w-14 h-14 bg-slate-700 rounded-full flex items-center justify-center active:bg-slate-600">
+                <svg width="24" height="24" fill="white" viewBox="0 0 24 24"><path d="M7.41 8.59L12 13.17l4.59-4.58L18 10l-6 6-6-6z"/></svg>
+            </button>
+        </div>
+        <div class="flex items-center justify-center">
+            <button id="btn-right" class="w-14 h-14 bg-slate-700 rounded-full flex items-center justify-center active:bg-slate-600">
+                <svg width="24" height="24" fill="white" viewBox="0 0 24 24"><path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z"/></svg>
+            </button>
+        </div>
+    </div>
+
+    <div class="mt-4 text-slate-500 text-xs text-center">
+        PC: Arrow Keys (Move/Rotate), Space (Hard Drop)<br>
+        Mobile: Use buttons below
+    </div>
+
+    <script>
+        const canvas = document.getElementById('game-canvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('start-btn');
+        const overlay = document.getElementById('overlay');
+        const overlayText = document.getElementById('overlay-text');
+
+        // Game Constants
+        const COLS = 10;
+        const ROWS = 20;
+        const BLOCK_SIZE = 30; // Will be adjusted
+        
+        // Colors for each piece
+        const COLORS = [
+            null,
+            '#00f0f0', // I
+            '#0000f0', // J
+            '#f0a000', // L
+            '#f0f000', // O
+            '#00f000', // S
+            '#a000f0', // T
+            '#f00000'  // Z
+        ];
+
+        // Piece Definitions
+        const PIECES = [
+            [],
+            [[0, 0, 0, 0], [1, 1, 1, 1], [0, 0, 0, 0], [0, 0, 0, 0]], // I
+            [[2, 0, 0], [2, 2, 2], [0, 0, 0]], // J
+            [[0, 0, 3], [3, 3, 3], [0, 0, 0]], // L
+            [[4, 4], [4, 4]], // O
+            [[0, 5, 5], [5, 5, 0], [0, 0, 0]], // S
+            [[0, 6, 0], [6, 6, 6], [0, 0, 0]], // T
+            [[7, 7, 0], [0, 7, 7], [0, 0, 0]]  // Z
+        ];
+
+        let board = createBoard();
+        let score = 0;
+        let lines = 0;
+        let level = 1;
+        let gameRunning = false;
+        let dropCounter = 0;
+        let dropInterval = 1000;
+        let lastTime = 0;
+
+        let player = {
+            pos: { x: 0, y: 0 },
+            matrix: null,
+            score: 0
+        };
+
+        function createBoard() {
+            return Array.from({ length: ROWS }, () => Array(COLS).fill(0));
+        }
+
+        function resizeCanvas() {
+            const h = Math.min(window.innerHeight * 0.7, 600);
+            const w = h / 2;
+            canvas.height = h;
+            canvas.width = w;
+            ctx.scale(w / (COLS * BLOCK_SIZE), h / (ROWS * BLOCK_SIZE));
+        }
+
+        function drawBlock(x, y, colorIndex) {
+            const color = COLORS[colorIndex];
+            ctx.fillStyle = color;
+            ctx.fillRect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+            
+            // Subtle border for the block
+            ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+            ctx.strokeRect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE);
+            
+            // Highlight
+            ctx.fillStyle = 'rgba(255,255,255,0.1)';
+            ctx.fillRect(x * BLOCK_SIZE, y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE / 4);
+        }
+
+        function draw() {
+            // Background
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw Board
+            board.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value !== 0) {
+                        drawBlock(x, y, value);
+                    }
+                });
+            });
+
+            // Draw Player
+            if (player.matrix) {
+                player.matrix.forEach((row, y) => {
+                    row.forEach((value, x) => {
+                        if (value !== 0) {
+                            drawBlock(player.pos.x + x, player.pos.y + y, value);
+                        }
+                    });
+                });
+            }
+        }
+
+        function collide(board, player) {
+            const [m, o] = [player.matrix, player.pos];
+            for (let y = 0; y < m.length; ++y) {
+                for (let x = 0; x < m[y].length; ++x) {
+                    if (m[y][x] !== 0 && (board[y + o.y] && board[y + o.y][x + o.x]) !== 0) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        function merge(board, player) {
+            player.matrix.forEach((row, y) => {
+                row.forEach((value, x) => {
+                    if (value !== 0) {
+                        board[y + player.pos.y][x + player.pos.x] = value;
+                    }
+                });
+            });
+        }
+
+        function rotate(matrix, dir) {
+            for (let y = 0; y < matrix.length; ++y) {
+                for (let x = 0; x < y; ++x) {
+                    [matrix[x][y], matrix[y][x]] = [matrix[y][x], matrix[x][y]];
+                }
+            }
+            if (dir > 0) matrix.forEach(row => row.reverse());
+            else matrix.reverse();
+        }
+
+        function playerDrop() {
+            player.pos.y++;
+            if (collide(board, player)) {
+                player.pos.y--;
+                merge(board, player);
+                playerReset();
+                arenaSweep();
+                updateScore();
+            }
+            dropCounter = 0;
+        }
+
+        function playerMove(dir) {
+            player.pos.x += dir;
+            if (collide(board, player)) {
+                player.pos.x -= dir;
+            }
+        }
+
+        function playerRotate(dir) {
+            const pos = player.pos.x;
+            let offset = 1;
+            rotate(player.matrix, dir);
+            while (collide(board, player)) {
+                player.pos.x += offset;
+                offset = -(offset + (offset > 0 ? 1 : -1));
+                if (offset > player.matrix[0].length) {
+                    rotate(player.matrix, -dir);
+                    player.pos.x = pos;
+                    return;
+                }
+            }
+        }
+
+        function playerReset() {
+            const id = (Math.random() * (PIECES.length - 1) | 0) + 1;
+            player.matrix = JSON.parse(JSON.stringify(PIECES[id]));
+            player.pos.y = 0;
+            player.pos.x = (board[0].length / 2 | 0) - (player.matrix[0].length / 2 | 0);
+            
+            if (collide(board, player)) {
+                gameOver();
+            }
+        }
+
+        function arenaSweep() {
+            let rowCount = 1;
+            outer: for (let y = board.length - 1; y > 0; --y) {
+                for (let x = 0; x < board[y].length; ++x) {
+                    if (board[y][x] === 0) {
+                        continue outer;
+                    }
+                }
+                const row = board.splice(y, 1)[0].fill(0);
+                board.unshift(row);
+                ++y;
+
+                score += rowCount * 10;
+                lines++;
+                rowCount *= 2;
+                
+                if (lines % 10 === 0) {
+                    level++;
+                    dropInterval = Math.max(100, 1000 - (level - 1) * 100);
+                }
+            }
+        }
+
+        function updateScore() {
+            const scoreEls = [document.getElementById('score'), document.getElementById('score-mobile')];
+            const levelEls = [document.getElementById('level'), document.getElementById('level-mobile')];
+            const lineEl = document.getElementById('lines');
+
+            scoreEls.forEach(el => el.innerText = score);
+            levelEls.forEach(el => el.innerText = level);
+            lineEl.innerText = lines;
+        }
+
+        function gameOver() {
+            gameRunning = false;
+            overlay.classList.remove('hidden');
+            overlayText.innerText = "GAME OVER";
+            startBtn.innerText = "RESTART";
+        }
+
+        function update(time = 0) {
+            if (!gameRunning) return;
+
+            const deltaTime = time - lastTime;
+            lastTime = time;
+
+            dropCounter += deltaTime;
+            if (dropCounter > dropInterval) {
+                playerDrop();
+            }
+
+            draw();
+            requestAnimationFrame(update);
+        }
+
+        function startGame() {
+            board = createBoard();
+            score = 0;
+            lines = 0;
+            level = 1;
+            dropInterval = 1000;
+            updateScore();
+            playerReset();
+            gameRunning = true;
+            overlay.classList.add('hidden');
+            lastTime = performance.now();
+            requestAnimationFrame(update);
+        }
+
+        // Controls
+        document.addEventListener('keydown', event => {
+            if (!gameRunning) return;
+            if (event.keyCode === 37) playerMove(-1); // Left
+            else if (event.keyCode === 39) playerMove(1); // Right
+            else if (event.keyCode === 40) playerDrop(); // Down
+            else if (event.keyCode === 38) playerRotate(1); // Up (Rotate)
+            else if (event.keyCode === 32) { // Space (Hard drop)
+                while (!collide(board, player)) {
+                    player.pos.y++;
+                }
+                player.pos.y--;
+                merge(board, player);
+                playerReset();
+                arenaSweep();
+                updateScore();
+            }
+        });
+
+        // Button Controls
+        document.getElementById('btn-left').onclick = () => playerMove(-1);
+        document.getElementById('btn-right').onclick = () => playerMove(1);
+        document.getElementById('btn-down').onclick = () => playerDrop();
+        document.getElementById('btn-rotate').onclick = () => playerRotate(1);
+        startBtn.onclick = () => startGame();
+
+        // Initial setup
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+        draw(); // Initial empty board draw
+
+    </script>
+</body>
+</html>
