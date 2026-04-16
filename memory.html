@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>그림-단어 메모리 게임</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #f0f9ff;
+            font-family: 'Pretendard', sans-serif;
+        }
+        .perspective {
+            perspective: 1000px;
+        }
+        .card-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            transition: transform 0.6s;
+            transform-style: preserve-3d;
+            cursor: pointer;
+        }
+        .card-inner.is-flipped {
+            transform: rotateY(180deg);
+        }
+        .card-front, .card-back {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 0.75rem;
+            box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+        }
+        .card-front {
+            background: linear-gradient(135deg, #6366f1, #a855f7);
+            color: white;
+            font-size: 2rem;
+        }
+        .card-back {
+            background-color: white;
+            transform: rotateY(180deg);
+            border: 2px solid #e2e8f0;
+        }
+        .card-matched .card-back {
+            background-color: #f0fdf4;
+            border-color: #4ade80;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center p-4">
+
+    <!-- Header -->
+    <div class="w-full max-w-4xl flex justify-between items-center mb-6">
+        <div>
+            <h1 class="text-2xl font-bold text-slate-800">그림-단어 매칭</h1>
+            <p class="text-sm text-slate-500">그림과 올바른 단어를 찾아보세요!</p>
+        </div>
+        <div class="flex gap-4 items-center">
+            <div class="text-center bg-white px-4 py-2 rounded-lg shadow-sm border border-slate-100">
+                <p class="text-[10px] text-slate-400 font-bold uppercase">Moves</p>
+                <p id="moves" class="text-xl font-bold text-indigo-600">0</p>
+            </div>
+            <button id="reset-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white px-4 py-2 rounded-lg font-bold transition-colors">
+                다시 시작
+            </button>
+        </div>
+    </div>
+
+    <!-- Game Board -->
+    <div id="game-board" class="grid grid-cols-4 sm:grid-cols-6 gap-3 w-full max-w-4xl mb-8">
+        <!-- Cards will be generated here -->
+    </div>
+
+    <!-- Victory Modal -->
+    <div id="modal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden flex items-center justify-center z-50">
+        <div class="bg-white p-8 rounded-2xl shadow-2xl text-center max-w-sm w-full mx-4">
+            <div class="text-6xl mb-4">🎉</div>
+            <h2 class="text-2xl font-bold mb-2">참 잘했어요!</h2>
+            <p id="final-stats" class="text-slate-600 mb-6 font-medium"></p>
+            <button id="modal-reset-btn" class="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-3 rounded-xl font-bold transition-colors">
+                한 번 더 하기
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // Game Data: 12 pairs (Image & Text) = 24 cards
+        const items = [
+            { id: 1, type: 'img', content: '🍎', matchId: 1 }, { id: 1, type: 'txt', content: '사과', matchId: 1 },
+            { id: 2, type: 'img', content: '🐶', matchId: 2 }, { id: 2, type: 'txt', content: '강아지', matchId: 2 },
+            { id: 3, type: 'img', content: '🚀', matchId: 3 }, { id: 3, type: 'txt', content: '우주선', matchId: 3 },
+            { id: 4, type: 'img', content: '🍦', matchId: 4 }, { id: 4, type: 'txt', content: '아이스크림', matchId: 4 },
+            { id: 5, type: 'img', content: '🌻', matchId: 5 }, { id: 5, type: 'txt', content: '해바라기', matchId: 5 },
+            { id: 6, type: 'img', content: '⚽', matchId: 6 }, { id: 6, type: 'txt', content: '축구공', matchId: 6 },
+            { id: 7, type: 'img', content: '🦁', matchId: 7 }, { id: 7, type: 'txt', content: '사자', matchId: 7 },
+            { id: 8, type: 'img', content: '🚗', matchId: 8 }, { id: 8, type: 'txt', content: '자동차', matchId: 8 },
+            { id: 9, type: 'img', content: '🎨', matchId: 9 }, { id: 9, type: 'txt', content: '팔레트', matchId: 9 },
+            { id: 10, type: 'img', content: '🌈', matchId: 10 }, { id: 10, type: 'txt', content: '무지개', matchId: 10 },
+            { id: 11, type: 'img', content: '🐳', matchId: 11 }, { id: 11, type: 'txt', content: '고래', matchId: 11 },
+            { id: 12, type: 'img', content: '🎸', matchId: 12 }, { id: 12, type: 'txt', content: '기타', matchId: 12 }
+        ];
+
+        let flippedCards = [];
+        let matchedPairs = 0;
+        let moves = 0;
+        let isLockBoard = false;
+
+        const board = document.getElementById('game-board');
+        const movesDisplay = document.getElementById('moves');
+        const modal = document.getElementById('modal');
+        const finalStats = document.getElementById('final-stats');
+
+        function shuffle(array) {
+            return array.sort(() => Math.random() - 0.5);
+        }
+
+        function createCard(cardData, index) {
+            const card = document.createElement('div');
+            card.classList.add('perspective', 'aspect-[3/4]');
+            card.dataset.id = cardData.id;
+            card.dataset.index = index;
+
+            card.innerHTML = `
+                <div class="card-inner w-full h-full">
+                    <div class="card-front">?</div>
+                    <div class="card-back text-2xl font-bold text-slate-700">
+                        ${cardData.content}
+                    </div>
+                </div>
+            `;
+
+            card.addEventListener('click', () => flipCard(card, cardData));
+            return card;
+        }
+
+        function flipCard(cardElement, cardData) {
+            if (isLockBoard) return;
+            if (cardElement.classList.contains('card-matched')) return;
+            if (flippedCards.length === 1 && flippedCards[0].element === cardElement) return;
+
+            const inner = cardElement.querySelector('.card-inner');
+            inner.classList.add('is-flipped');
+
+            flippedCards.push({ element: cardElement, data: cardData });
+
+            if (flippedCards.length === 2) {
+                moves++;
+                movesDisplay.innerText = moves;
+                checkMatch();
+            }
+        }
+
+        function checkMatch() {
+            isLockBoard = true;
+            const [card1, card2] = flippedCards;
+
+            if (card1.data.id === card2.data.id && card1.data.type !== card2.data.type) {
+                // Match found!
+                setTimeout(() => {
+                    card1.element.classList.add('card-matched');
+                    card2.element.classList.add('card-matched');
+                    matchedPairs++;
+                    flippedCards = [];
+                    isLockBoard = false;
+
+                    if (matchedPairs === items.length / 2) {
+                        showVictory();
+                    }
+                }, 600);
+            } else {
+                // No match
+                setTimeout(() => {
+                    card1.element.querySelector('.card-inner').classList.remove('is-flipped');
+                    card2.element.querySelector('.card-inner').classList.remove('is-flipped');
+                    flippedCards = [];
+                    isLockBoard = false;
+                }, 1000);
+            }
+        }
+
+        function showVictory() {
+            finalStats.innerText = `${moves}번의 시도 끝에 성공했습니다!`;
+            modal.classList.remove('hidden');
+        }
+
+        function resetGame() {
+            board.innerHTML = '';
+            flippedCards = [];
+            matchedPairs = 0;
+            moves = 0;
+            isLockBoard = false;
+            movesDisplay.innerText = '0';
+            modal.classList.add('hidden');
+
+            const shuffledItems = shuffle([...items]);
+            shuffledItems.forEach((item, index) => {
+                board.appendChild(createCard(item, index));
+            });
+        }
+
+        document.getElementById('reset-btn').addEventListener('click', resetGame);
+        document.getElementById('modal-reset-btn').addEventListener('click', resetGame);
+
+        // Start Game
+        resetGame();
+    </script>
+</body>
+</html>
